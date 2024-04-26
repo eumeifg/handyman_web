@@ -1,0 +1,36 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
+      - IMAGE_TAG=staging-${TAG}
+  build:
+    commands:
+      - printenv
+      - printf "%s" "$DOCKERHUB_PASSWORD" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - echo $IMAGE_TAG
+      - docker build -t $IMAGE_NAME .
+      - docker tag $IMAGE_NAME:latest $IMAGE_URL/$IMAGE_NAME:$IMAGE_TAG
+  post_build:
+    commands:
+      - printenv
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - echo $IMAGE_TAG
+      - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $IMAGE_URL
+      - docker push $IMAGE_URL/$IMAGE_NAME:$IMAGE_TAG
+      - echo image successfully pushed to ECR
+      - aws eks --region $EKS_REGION update-kubeconfig --name $EKS_NAME
+      - kubectl set image -n sun3ah deployment/sun3ah sun3ah=$IMAGE_URL/$IMAGE_NAME:$IMAGE_TAG
+      - echo image updated
+      - kubectl delete jobs --all -n sun3ah
+      - export IMAGE_NAME=$IMAGE_URL/$IMAGE_NAME:$IMAGE_TAG
+      - sed -i "s|<IMAGE_PLACEHOLDER>|${IMAGE_NAME}|g" jobs/sun3ah-sun3ah-migration-job.yaml
+      - kubectl apply -f jobs/sun3ah-sun3ah-migration-job.yaml -n sun3ah
+      - sed -i "s|<IMAGE_PLACEHOLDER>|${IMAGE_NAME}|g" jobs/sun3ah-sun3ah-cache-job.yaml
+      - kubectl apply -f jobs/sun3ah-sun3ah-cache-job.yaml -n sun3ah

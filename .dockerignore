@@ -1,0 +1,9 @@
+# ignore
+.git
+.vscode
+.git*
+buildspec.yml
+*.md
+.cache
+Dockerfile
+jobs/
